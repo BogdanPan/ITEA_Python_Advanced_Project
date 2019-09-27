@@ -5,12 +5,35 @@ from models.user_model import User
 from telebot.types import (
 	InlineKeyboardButton,
 	InlineKeyboardMarkup
-	)
+)
+from time import time
+from Flask import *
 from bson import ObjectId
 from mongoengine import connect
 
-bot = telebot.TeleBot(config.TOKEN)
 connect('bot_shop')
+WEBHOOK_HOST = 'IP'
+WEBHOOK_PORT = 80  # 443, 80, 88 or 8443 (port need to be 'open')
+WEBHOOK_LISTEN = '0.0.0.0'  # In some VPS you may need to put here the IP addr
+
+WEBHOOK_SSL_CERT = './webhook_cert.pem'  # Path to the ssl certificate
+WEBHOOK_SSL_PRIV = './webhook_pkey.pem'  # Path to the ssl private key
+
+WEBHOOK_URL_BASE = "https://%s:%s" % (WEBHOOK_HOST, WEBHOOK_PORT)
+WEBHOOK_URL_PATH = "/%s/" % (config.TOKEN)
+bot = telebot.TeleBot(config.TOKEN)
+app = Flask(__name__)
+
+
+@app.route(WEBHOOK_URL_PATH, methods=['POST'])
+def webhook():
+	if request.headers.get('content-type') == 'application/json':
+		json_string = request.get_data().decode('utf-8')
+		update = telebot.types.Update.de_json(json_string)
+		bot.process_new_updates([update])
+		return ''
+	else:
+		abort(403)
 
 
 def get_by_lang(text, lang):
@@ -231,4 +254,16 @@ def show_history(call):
 
 
 if __name__ == '__main__':
-	bot.polling()
+	bot.remove_webhook()
+
+	time.sleep(0.1)
+
+	# Set webhook
+	bot.set_webhook(url=WEBHOOK_URL_BASE + WEBHOOK_URL_PATH,
+					certificate=open(WEBHOOK_SSL_CERT, 'r'))
+
+	# Start flask server
+	app.run(host=WEBHOOK_LISTEN,
+			port=WEBHOOK_PORT,
+			ssl_context=(WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV),
+			debug=True)
